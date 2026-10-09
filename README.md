@@ -4,16 +4,17 @@ A small Telegram bot on one Cloudflare Worker and one D1 database. The interface
 
 ## Reading flow
 
-- Subscribe or unsubscribe from 15 categories with buttons, one source per category.
+- A three-action home screen: **Read news**, **Read later**, **Settings**. It shows your topics, digest size and delivery times.
+- Settings has separate pages for categories, article count and delivery. Categories show five choices per page, each with its source. **Previous / Next / Back** stay in the same message; changing a setting updates that page.
 - Choose **3 / 5 / 10 articles per digest total**, shared across categories.
 - Choose any combination of **07:00 / 12:00 / 20:00 JST**, or manual only. Default: **five articles at 20:00 JST**. These are 01:00 / 06:00 / 14:00 in Moscow.
-- **Read news** selects recent unread articles from the shared cache. **Refresh now** checks your subscribed sources and returns a digest.
-- **Save** adds an article to **Read later**. Saved links survive article-cache cleanup. Browse five saved links at a time and remove individual items.
+- **Read news** selects recent unread articles from the shared cache. Headlines link to originals. Digests have up to five articles per page; **Article details** opens a single story with Previous / Next and Back to its digest page. **Refresh sources** is on the last digest page.
+- **Save for later** is in the article view. Read later has a paged list and a single-article view with the original link and Remove. Saved links survive article-cache cleanup.
 - **Pause** stops automatic delivery. Manual reading and saved links remain available.
 - Headlines, short RSS descriptions, source names and original links. Basic URL deduplication removes fragments and common tracking parameters.
 - Optional, on-request OpenRouter translation or explanation of the headline and RSS excerpt. Disabled without a key, model and allowed-user list.
 
-Send `/start`, select categories and tap **Read news**. Commands: `/news`, `/refresh`, `/saved`, `/categories`, `/settings`, `/pause`, `/resume`.
+Send `/start` to open the home screen. The Telegram command menu contains just `/start`, `/news`, `/saved`, `/settings`. `/refresh`, `/categories`, `/pause`, `/resume` remain supported when typed. Unconfigured AI controls are hidden.
 
 Only unread articles from the past 48 hours enter a digest. Older items expire from the reading window. There is no obligation to empty a backlog of hundreds. Empty digests are not pushed. Categories take turns within the selected count.
 
@@ -74,11 +75,12 @@ The current buttons translate or explain the **headline and RSS excerpt**. `arti
 | Article cache and delivery history | 30 days from first ingestion |
 | Feed validators and refresh times | Retained |
 | AI answers | 7 days |
+| Digest navigation sessions | 7 days; scoped to the owning user |
 | Processed Telegram update IDs | 1 day |
 
 Incoming Telegram requests require the webhook secret. Private chats only; users cannot operate another user's saved list. `ALLOWED_CHAT_IDS` can restrict the entire bot further. Category and schedule buttons set explicit state, so repeated clicks are safe. Pause/manual settings are preserved during migration; previous automatic intervals become the evening window.
 
-Per-chat locks prevent overlapping digests; sent article IDs are recorded after each successful message. There is a small duplicate window if Telegram accepts a message and the following database write fails. The bot does not claim exactly-once delivery. Link history is bounded to the cache lifetime; an undated entry reintroduced after eviction may appear again.
+Per-chat locks prevent overlapping digests; article IDs are marked read only after their page or article view is successfully shown. Unopened pages remain eligible for later selections. A repeated request within 20 seconds reopens the last selection. There is a small duplicate window if Telegram accepts a message and the following database write fails. The bot does not claim exactly-once delivery. Link history is bounded to the cache lifetime; an undated entry reintroduced after eviction may appear again.
 
 The authenticated internal task endpoints use `INTERNAL_SECRET` if set, otherwise the webhook secret. The deployed Worker has a separate internal secret; new copies can use the fallback. Never expose either secret in logs or source.
 

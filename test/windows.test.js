@@ -46,8 +46,10 @@ test('saved links survive cache cleanup; ownership, repeated saves and removal a
   await cleanup(DB, now + 31 * DAY);
   assert.equal((await DB.prepare('SELECT count(*) AS n FROM articles').first()).n, 0);
   await handleUpdate(e, callback(1, 'saved:0'), n.net, now + 31 * DAY);
-  assert.match(n.messages.at(-1).text, /Headline news/);
-  assert.equal(n.messages.at(-1).reply_markup.inline_keyboard[0][0].url, 'https://example.org/news/0');
+  const list = n.requests.at(-1).body;
+  assert.match(list.text, /Headline news/);
+  await handleUpdate(e, callback(1, list.reply_markup.inline_keyboard[0][0].callback_data), n.net, now + 31 * DAY);
+  assert.equal(n.requests.at(-1).body.reply_markup.inline_keyboard[0][0].url, 'https://example.org/news/0');
   await handleUpdate(e, callback(2, 'unsave:1:0'), n.net, now);
   assert.equal((await DB.prepare('SELECT count(*) AS n FROM bookmarks').first()).n, 1);
   await handleUpdate(e, callback(1, 'unsave:1:0'), n.net, now);

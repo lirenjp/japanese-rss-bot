@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import assert from 'node:assert/strict';
 
 const sent = [];
+const edited = [];
 const mf = new Miniflare(convertV4MiniflareOptions({
   name: 'bot', serviceBindings: { SELF: 'bot' },
   modules: true, scriptPath: 'dist/index.js', compatibilityDate: '2026-10-09',
@@ -12,6 +13,7 @@ const mf = new Miniflare(convertV4MiniflareOptions({
     if (new URL(request.url).hostname !== 'api.telegram.org') return new Response('<rss><channel><item><title>更新されたニュース</title><link>https://example.org/2</link><description>新しい説明</description></item></channel></rss>');
     const data = await request.json();
     if (request.url.endsWith('/sendMessage')) sent.push(data);
+    if (request.url.endsWith('/editMessageText')) edited.push(data);
     return Response.json({ ok: true, result: { message_id: 1 } });
   },
 }));
@@ -27,6 +29,7 @@ try {
   const chat = { id: 101, type: 'private' };
   const from = { id: 101 };
   await update(1, { message: { chat, from, text: '/start' } });
+  assert.equal(sent[0].reply_markup.inline_keyboard.flat().length, 3);
   await update(2, { callback_query: { id: 'cb', from, data: 'cat:games:1', message: { chat, text: 'Categories', message_id: 1 } } });
   const now = Math.floor(Date.now() / 1000);
   await DB.prepare(`INSERT INTO articles(url,original_url,category,source,title,summary,published_at,first_seen_at)
@@ -36,6 +39,26 @@ try {
   assert.equal(sent.length, 2);
   assert.match(sent[1].text, /日本語の見出し/);
   assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM deliveries').first()).n, 1);
+  const navigate = (id, data) => update(id, { callback_query: { id: `ui${id}`, from, data,
+    message: { chat, text: 'Any current page', message_id: 2 } } });
+  const choice = label => edited.at(-1).reply_markup.inline_keyboard.flat().find(b => b.text === label).callback_data;
+  await navigate(10, sent[1].reply_markup.inline_keyboard[0][0].callback_data);
+  assert.match(edited.at(-1).text, /Article 1\/1/);
+  await navigate(11, choice('Save for later'));
+  assert.ok(choice('Remove from Read later'));
+  await navigate(12, choice('← Back'));
+  assert.match(edited.at(-1).text, /Your news/);
+  await navigate(13, choice('← Back'));
+  await navigate(14, choice('Settings'));
+  await navigate(15, choice('Articles per digest'));
+  await navigate(16, choice('3'));
+  await navigate(17, choice('← Back'));
+  await navigate(18, choice('← Back'));
+  await navigate(19, choice('Read later'));
+  await navigate(20, choice('Read article'));
+  assert.equal(edited.at(-1).reply_markup.inline_keyboard[0][0].url, 'https://example.org/1');
+  assert.equal(sent.length, 2); // Navigation edits the current message.
+  assert.ok(edited.every(m => [1, 2].includes(m.message_id)));
   await update(4, { callback_query: { id: 'save', from, data: 'save:1', message: { chat, text: '日本のニュース', message_id: 2 } } });
   await DB.prepare('DELETE FROM articles WHERE id=1').run();
   await update(5, { message: { chat, from, text: '/saved' } });
@@ -44,5 +67,5 @@ try {
   assert.match(sent.at(-1).text, /更新されたニュース/);
   assert.equal((await DB.prepare('SELECT used FROM budgets WHERE name=?').bind('feed-fetches').first()).used, 1);
   assert.equal((await DB.prepare('SELECT count(*) AS n FROM bookmarks').first()).n, 1);
-  console.log('PASS: compiled Worker, authenticated webhook, real D1, digest/replay, persistent bookmark and SELF refresh.');
+  console.log('PASS: compiled Worker, authenticated webhook, real D1, menu/article/back navigation, digest/replay, persistent bookmark and SELF refresh.');
 } finally { await mf.dispose(); }

@@ -1,6 +1,7 @@
 import { acquire, release, nowSeconds, DAY } from './db.js';
-import { send, button, telegram } from './telegram.js';
+import { send, telegram } from './telegram.js';
 import { clip, boundedText } from './text.js';
+import { back, pageAction } from './navigation.js';
 
 // Extension point: replace this function with a publisher-specific full-article
 // extractor later. Never label an RSS excerpt as a full article translation.
@@ -12,13 +13,14 @@ export async function cacheKey(parts) {
   return Array.from(new Uint8Array(bytes), b => b.toString(16).padStart(2, '0')).join('');
 }
 
-export async function runAI(env, user, mode, articleId, net = fetch, now = nowSeconds()) {
+export async function runAI(env, user, mode, articleId, net = fetch, now = nowSeconds(), returnAction = pageAction('home')) {
+  const keyboard = [back(returnAction)];
   if (!env.OPENROUTER_API_KEY || !env.OPENROUTER_MODEL) {
-    await send(env, user.chat_id, 'Translation and explanation are not enabled yet.', undefined, net);
+    await send(env, user.chat_id, 'Translation and explanation are not enabled yet.', keyboard, net);
     return;
   }
   if (!(env.AI_ALLOWED_CHAT_IDS ?? '').split(',').map(x => x.trim()).includes(String(user.chat_id))) {
-    await send(env, user.chat_id, 'AI access has not been enabled for your account.', undefined, net);
+    await send(env, user.chat_id, 'AI access has not been enabled for your account.', keyboard, net);
     return;
   }
   const lock = await acquire(env.DB, `ai-user:${user.chat_id}`, 90, now);
@@ -28,7 +30,7 @@ export async function runAI(env, user, mode, articleId, net = fetch, now = nowSe
     const article = await env.DB.prepare(`SELECT a.* FROM articles a JOIN deliveries d ON d.article_id=a.id
       WHERE a.id=? AND d.chat_id=?`).bind(articleId, user.chat_id).first();
     if (!article) {
-      await send(env, user.chat_id, 'This article is no longer in the 30-day cache.', undefined, net);
+      await send(env, user.chat_id, 'This article is no longer in the 30-day cache.', keyboard, net);
       return;
     }
     const context = await articleContext(article);
@@ -41,7 +43,7 @@ export async function runAI(env, user, mode, articleId, net = fetch, now = nowSe
       const allowed = await env.DB.prepare(`UPDATE users SET ai_count=CASE WHEN ai_day=? THEN ai_count+1 ELSE 1 END,ai_day=?
         WHERE chat_id=? AND (ai_day<>? OR ai_count<?) RETURNING chat_id`).bind(day, day, user.chat_id, day, dailyLimit).first();
       if (!allowed) {
-        await send(env, user.chat_id, 'Daily AI limit reached. Cached answers remain available.', undefined, net);
+        await send(env, user.chat_id, 'Daily AI limit reached. Cached answers remain available.', keyboard, net);
         return;
       }
       const language = user.language === 'en' ? 'English' : 'Russian';
@@ -70,10 +72,10 @@ export async function runAI(env, user, mode, articleId, net = fetch, now = nowSe
     for (let offset = 0; offset < characters.length; offset += 1800) {
       const chunk = characters.slice(offset, offset + 1800).join('');
       await telegram(env, 'sendMessage', { chat_id: user.chat_id, text: `${title}\n\n${chunk}`,
-        link_preview_options: { is_disabled: true } }, net);
+        link_preview_options: { is_disabled: true }, reply_markup: { inline_keyboard: keyboard } }, net);
     }
   } catch (error) {
     console.warn('AI request failed', error.name);
-    await send(env, user.chat_id, 'Could not process this excerpt. Please try again later.', [[button('Settings', 'settings')]], net);
+    await send(env, user.chat_id, 'Could not process this excerpt. Please try again later.', keyboard, net);
   } finally { await release(env.DB, `ai-user:${user.chat_id}`, lock); }
 }

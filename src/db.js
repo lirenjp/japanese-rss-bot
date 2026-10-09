@@ -31,6 +31,7 @@ export async function release(db, name, token) {
 export async function cleanup(db, now = nowSeconds()) {
   await db.batch([
     db.prepare('DELETE FROM articles WHERE id IN (SELECT id FROM articles WHERE first_seen_at < ? LIMIT 1500)').bind(now - 30 * DAY),
+    db.prepare('DELETE FROM reader_sessions WHERE id IN (SELECT id FROM reader_sessions WHERE created_at < ? LIMIT 1000)').bind(now - 7 * DAY),
     db.prepare('DELETE FROM ai_cache WHERE cache_key IN (SELECT cache_key FROM ai_cache WHERE expires_at < ? LIMIT 1500)').bind(now),
     db.prepare('DELETE FROM processed_updates WHERE update_id IN (SELECT update_id FROM processed_updates WHERE created_at < ? LIMIT 1000)').bind(now - DAY),
     db.prepare('DELETE FROM locks WHERE name IN (SELECT name FROM locks WHERE expires_at < ? LIMIT 1000)').bind(now - DAY),

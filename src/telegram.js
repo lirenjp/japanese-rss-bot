@@ -1,7 +1,7 @@
 import { clip } from './text.js';
 
 export class TelegramError extends Error {
-  constructor(code, retryAfter = 0) { super(`Telegram HTTP ${code}`); this.code = code; this.retryAfter = retryAfter; }
+  constructor(code, retryAfter = 0, description = '') { super(`Telegram HTTP ${code}`); this.code = code; this.retryAfter = retryAfter; this.description = description; }
 }
 export async function telegram(env, method, payload, net = fetch) {
   const response = await net(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, {
@@ -9,7 +9,7 @@ export async function telegram(env, method, payload, net = fetch) {
     body: JSON.stringify(payload), signal: AbortSignal.timeout(8000),
   });
   const data = await response.json();
-  if (!response.ok || !data.ok) throw new TelegramError(data.error_code ?? response.status, data.parameters?.retry_after);
+  if (!response.ok || !data.ok) throw new TelegramError(data.error_code ?? response.status, data.parameters?.retry_after, data.description);
   return data.result;
 }
 export const send = (env, chatId, text, keyboard, net = fetch) => telegram(env, 'sendMessage', {

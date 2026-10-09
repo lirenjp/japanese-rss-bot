@@ -2,14 +2,10 @@ import { telegram } from './telegram.js';
 import { acquire, release, nowSeconds, DAY } from './db.js';
 
 const commands = [
-  { command: 'start', description: 'Choose your categories' },
-  { command: 'news', description: 'Read the next digest' },
-  { command: 'refresh', description: 'Refresh subscribed sources and read' },
+  { command: 'start', description: 'Open the bot menu' },
+  { command: 'news', description: 'Read a small news selection' },
   { command: 'saved', description: 'Open Read later' },
-  { command: 'categories', description: 'Subscribe or unsubscribe' },
-  { command: 'settings', description: 'Article count, delivery windows and AI language' },
-  { command: 'pause', description: 'Pause automatic delivery' },
-  { command: 'resume', description: 'Resume automatic delivery' },
+  { command: 'settings', description: 'Topics, digest size and delivery' },
 ];
 
 export async function configureTelegram(env, net = fetch, replace = false) {
