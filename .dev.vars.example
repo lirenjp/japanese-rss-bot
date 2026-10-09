@@ -1,0 +1,13 @@
+# Set production secrets using Wrangler or the Cloudflare dashboard.
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_WEBHOOK_SECRET=
+# Optional. Leave empty to keep AI disabled.
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=
+# Explicitly opt users into paid AI, comma-separated Telegram numeric IDs.
+AI_ALLOWED_CHAT_IDS=
+AI_DAILY_LIMIT=10
+# Optional: restrict the entire bot. Empty means any private-chat user may join.
+ALLOWED_CHAT_IDS=
+# Used only by the local Telegram setup script, after deploying.
+WORKER_URL=

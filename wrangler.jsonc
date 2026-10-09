@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "japanese-rss-bot",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-09",
+  "triggers": { "crons": ["*/15 * * * *"] },
+  "observability": { "enabled": true },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "japanese-rss-bot",
+    "database_id": "00000000-0000-0000-0000-000000000000",
+    "migrations_dir": "migrations"
+  }],
+  "vars": {
+    "OPENROUTER_MODEL": "",
+    "AI_ALLOWED_CHAT_IDS": "",
+    "AI_DAILY_LIMIT": "10"
+  }
+}
