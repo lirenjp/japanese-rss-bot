@@ -7,6 +7,7 @@ import { DAY, cleanup, spend } from '../src/db.js';
 import { deliver } from '../src/delivery.js';
 import { parseFeed, pollFeed, FEED_ITEMS } from '../src/rss.js';
 import { FEEDS } from '../src/feeds.js';
+import worker from '../src/index.js';
 
 const now = Date.parse('2026-10-09T10:00:00Z') / 1000;
 test('JST windows cross UTC midnight, default to evening and manual reads preserve schedule', async () => {
@@ -90,4 +91,13 @@ test('oversized feed entries preserve cached news instead of consuming an unboun
   assert.equal(result.status, 'failed');
   assert.equal((await DB.prepare('SELECT count(*) AS n FROM articles').first()).n, 1);
   assert.ok((await DB.prepare('SELECT error FROM feed_state WHERE category=?').bind('news').first()).error);
+});
+
+test('legacy cron events cannot run the old 15-minute cadence after schedule migration', async () => {
+  const DB = database(), e = env(DB), calls = [];
+  e.SELF = { fetch: async request => { calls.push(new URL(request.url).pathname); return Response.json({ status: 'cached' }); } };
+  await worker.scheduled({ cron: '*/15 * * * *', scheduledTime: now * 1000 }, e);
+  assert.equal(calls.length, 0);
+  await worker.scheduled({ cron: '0 3,11,22 * * *', scheduledTime: now * 1000 }, e);
+  assert.ok(calls.includes('/_internal/feed/news'));
 });

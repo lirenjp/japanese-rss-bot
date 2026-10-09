@@ -74,7 +74,8 @@ export default {
     finally { await release(env.DB, lockName, token); }
   },
   async scheduled(event, env) {
-    if (!env.TELEGRAM_BOT_TOKEN) return;
+    // Cron changes propagate asynchronously; ignore events from the old cadence.
+    if (event.cron !== '0 3,11,22 * * *' || !env.TELEGRAM_BOT_TOKEN) return;
     try { await internal(env, '/_internal/setup'); }
     catch (e) { console.error('Telegram setup failed', e.name); return; }
     await tick(env, fetch, Math.floor(event.scheduledTime / 1000));
