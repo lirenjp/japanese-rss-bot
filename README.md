@@ -1,115 +1,88 @@
 # Japanese RSS bot
 
-Small Telegram bot running on one Cloudflare Worker with one D1 database.
-The interface is in English; original news stays in Japanese. No web dashboard.
+A small Telegram bot on one Cloudflare Worker and one D1 database. The interface is in English; original headlines stay in Japanese.
 
-## What is implemented
+## Reading flow
 
-- Fifteen categories, one fixed RSS source each. Subscribe/unsubscribe with buttons.
-- Up to **3 / 5 / 10 articles per digest total**, shared across selected categories.
-- **Every 15 minutes / hourly / every 24 hours / manual only**, plus pause/resume.
-- A compact digest with source, original headline, short RSS description and original link.
-- “More news” returns the next unread selection. Categories take turns so a busy news feed does not occupy every slot.
-- Original links are deduplicated after removing fragments and known tracking parameters.
-- Shared feed cache, delivery history and user preferences persist in D1 across deployments.
-- Optional OpenRouter translation/explanation, only after a button press.
-- Private chats only. Every user has separate subscriptions and settings.
+- Subscribe or unsubscribe from 15 categories with buttons, one source per category.
+- Choose **3 / 5 / 10 articles per digest total**, shared across categories.
+- Choose any combination of **07:00 / 12:00 / 20:00 JST**, or manual only. Default: **five articles at 20:00 JST**. These are 01:00 / 06:00 / 14:00 in Moscow.
+- **Read news** selects recent unread articles from the shared cache. **Refresh now** checks your subscribed sources and returns a digest.
+- **Save** adds an article to **Read later**. Saved links survive article-cache cleanup. Browse five saved links at a time and remove individual items.
+- **Pause** stops automatic delivery. Manual reading and saved links remain available.
+- Headlines, short RSS descriptions, source names and original links. Basic URL deduplication removes fragments and common tracking parameters.
+- Optional, on-request OpenRouter translation or explanation of the headline and RSS excerpt. Disabled without a key, model and allowed-user list.
 
-Start with `/start`, select categories, then tap **Read news**.
-The cache fills on the next cron run, within roughly 15 minutes of deployment.
-Automatic delivery defaults to hourly, with five articles maximum. Selecting zero categories stops delivery.
-Pause affects automatic delivery; manually requesting news still works.
-Every 24 hours means 24 hours from when that option was selected, not a fixed local clock time.
+Send `/start`, select categories and tap **Read news**. Commands: `/news`, `/refresh`, `/saved`, `/categories`, `/settings`, `/pause`, `/resume`.
+
+Only unread articles from the past 48 hours enter a digest. Older items expire from the reading window. There is no obligation to empty a backlog of hundreds. Empty digests are not pushed. Categories take turns within the selected count.
+
+## Cloudflare Free budget
+
+The deployed account was confirmed as **Workers Free** by the Cloudflare API. No paid plan or paid resource is enabled by this project. Keep the account on Free: Cloudflare stops requests or queries at its Free quotas rather than billing overages. Other applications share the account quotas.
+
+| Resource | Free quota | Bot bound |
+| --- | --- | --- |
+| Worker requests | 100,000/day | Three scheduled runs; up to 300 accepted Telegram updates/day, shared by all users |
+| Worker CPU | 10 ms/invocation | Feed work and automatic deliveries split into small invocations through a self service binding |
+| Cron triggers | 5/account | One expression: `0 3,11,22 * * *` (UTC) |
+| External subrequests | 50/invocation | At most 15 feed service calls per coordinator; three at a time |
+| D1 queries | 50/invocation | Separate feed and delivery tasks; each uses a small number of queries |
+| D1 rows read | 5 million/day | 300 accepted updates/day, 10 users, bounded article retention and indexed lookups |
+| D1 rows written | 100,000/day | 120 source-fetch attempts/day, 5 entries/source; unchanged entries are not rewritten |
+| D1 storage | 500 MB/database; 5 GB/account | 30-day article cache, 50 saved links/user, 10-user initial deployment |
+
+The daily application budgets reset at midnight UTC and fail closed. A user can request a source refresh once per hour; a shared source is fetched at most once per 30 minutes. Cache reads remain immediate. Scheduled refreshes use about 45 of the 120 daily source-fetch attempts. Manual refreshes share the remainder. Source errors preserve cached articles.
+
+A service binding points back to this same Worker, keeping the deployment at one Worker and one database. Each feed invocation reads only a bounded prefix (128 KB maximum), keeps at most 5 entries, and parses only useful, size-limited XML fields. Oversized full-article content is skipped. A publisher that exceeds a bound keeps its previous cached data. CPU usage depends on feed contents; monitor Worker logs for `exceededCpu` before increasing any bounds. No upgrade is required or performed.
+
+The current account's database is around 0.6 MB. At the daily ingest cap, 30 days would contain at most 18,000 article rows plus delivery records and small bookmark snapshots. Feed validation, query work and index writes consume quotas too; the application budgets intentionally leave substantial room for them. They bound this bot, not other applications or hostile requests to the public URL.
 
 ## Deploy
 
-Requires Node.js 22+, a Cloudflare account and a **dedicated Telegram bot** from [BotFather](https://t.me/BotFather).
-Keep an existing archive bot on its own webhook.
+Requires Node.js 22+, a Cloudflare Free account and a dedicated Telegram bot from [BotFather](https://t.me/BotFather).
 
-This repository is configured for the deployed Worker at `https://japanese-rss-bot.chitoge322.workers.dev` and its D1 database.
-To finish that deployment, add `TELEGRAM_BOT_TOKEN` as a **Secret** in the Worker's Settings → Variables and Secrets.
-The webhook secret is already configured. The next cron, within roughly 15 minutes, registers the webhook and commands automatically, then fills the feed cache.
-Automatic setup checks the webhook daily and after secret rotation, and refuses to replace a different existing webhook.
-The following CLI steps apply when deploying your own copy; set your own database ID and `WORKER_URL`.
+This repository is configured for `https://japanese-rss-bot.chitoge322.workers.dev` and its D1 database. Its Telegram secrets and webhook are already configured. Never copy secrets into GitHub.
 
-1. Unzip this folder, then run:
+For your own copy:
 
-   ```sh
-   npm ci
-   npx wrangler login
-   npx wrangler d1 create japanese-rss-bot
-   ```
+1. Run `npm ci`, `npx wrangler login` and `npx wrangler d1 create japanese-rss-bot`.
+2. Set the returned database ID and your HTTPS `WORKER_URL` in `wrangler.jsonc`. Set both `name` and the `SELF` service's name to your Worker name.
+3. Run `npm run db:remote` to apply migrations.
+4. Configure `TELEGRAM_BOT_TOKEN` and a random 32–64 character `TELEGRAM_WEBHOOK_SECRET` with `npx wrangler secret put NAME` or the Cloudflare dashboard.
+5. Run `npm run deploy`. The existing deployed Worker supports its self service binding. For a new Worker name, deploy once without `services`, then add the SELF binding and redeploy.
+6. Copy `.dev.vars.example` to `.dev.vars`, fill the same secrets and Worker URL, then run `npm run telegram:setup` to register Telegram immediately. Alternatively, the next scheduled run registers it automatically.
 
-2. Copy the returned D1 database ID into `wrangler.jsonc` and set `WORKER_URL` to your Worker's HTTPS URL.
+Automatic setup rechecks daily and after secret rotation or command changes. It refuses to replace a different existing webhook. The CLI accepts `--replace-webhook` when explicitly moving a bot.
 
-3. Apply the migration and configure the two required secrets:
-
-   ```sh
-   npm run db:remote
-   npx wrangler secret put TELEGRAM_BOT_TOKEN
-   npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
-   ```
-
-   Use a random 32–64 character webhook secret. Generate one locally with:
-
-   ```sh
-   node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
-   ```
-
-4. Deploy:
-
-   ```sh
-   npm run deploy
-   ```
-
-5. Copy `.dev.vars.example` to `.dev.vars`. Fill in the same bot token and webhook secret, and the HTTPS Worker URL from deployment. Run:
-
-   ```sh
-   npm run telegram:setup
-   ```
-
-   This registers the webhook and command menu. It refuses to replace a different existing webhook unless explicitly run with `--replace-webhook`.
-
-6. Open the Telegram bot, send `/start`, select categories and request a digest.
-
-For automatic deployment, put this folder in a dedicated GitHub repository and connect it in **Cloudflare → Workers & Pages → Import repository**. Use `npm run deploy` as the deploy command. Apply future D1 migrations before code that needs them. Keep `.dev.vars` out of Git.
+Connect this repository in Cloudflare Workers & Pages for GitHub deployment. Deploy command: `npm run deploy`. Apply future D1 migrations before deploying code that needs them. Keep `.dev.vars` out of Git. No VPS, Docker, Redis, R2, queue or separate web dashboard is needed.
 
 ## Optional OpenRouter
 
-The bot works without an AI key. To enable AI for selected users:
+The bot works without AI. To enable it for selected users, add the `OPENROUTER_API_KEY` secret, set `OPENROUTER_MODEL`, and list numeric Telegram IDs in `AI_ALLOWED_CHAT_IDS`. Keep all three empty for zero provider calls. Restrict provider-key credits before enabling paid models.
 
-```sh
-npx wrangler secret put OPENROUTER_API_KEY
-```
+`AI_DAILY_LIMIT` defaults to 10 uncached attempts per permitted user per UTC day, including failed attempts. Responses are cached seven days by source text, model, action, language and prompt version. Cache hits do not spend the daily allowance. Russian and English are available. Article AI buttons appear only for permitted users after configuration.
 
-Set `OPENROUTER_MODEL` to a model ID available to your OpenRouter account and `AI_ALLOWED_CHAT_IDS` to the permitted Telegram numeric user IDs, comma-separated. Then redeploy.
-Find your numeric ID in a local Telegram update or bot administration tool; it is the private chat ID.
-`AI_DAILY_LIMIT` defaults to 10 uncached requests per allowed user per UTC day, including failed provider attempts.
-Set a credit limit on the provider key if opening AI to more users.
+The current buttons translate or explain the **headline and RSS excerpt**. `articleContext` in `src/ai.js` is an extension point for publisher-specific full-article extraction. There is no automatic AI processing, semantic clustering, entity database or phrase-selection UI.
 
-AI output is available in Russian or English. It is cached for seven days, keyed by source text, model, action, language and prompt version. Cache hits do not consume the bot's daily request allowance.
+## Persistence and failures
 
-**Current scope is the headline and RSS excerpt.** Buttons and responses explicitly label this. Full-article extraction has a small extension point in `src/ai.js` (`articleContext`). It is deliberately not a generic website scraper; add publisher-specific extraction there when needed. AI does not automatically rewrite news, classify stories, cluster events or maintain entity records.
-
-## Persistence and failure behavior
-
-| Data | Location / lifetime |
+| Data | Lifetime in D1 |
 | --- | --- |
-| User settings and categories | D1, retained until explicitly removed |
-| Article text and delivery history | D1, 30 days from first ingestion |
-| Last feed fetch and HTTP validators | D1, retained |
-| Translation/explanation results | D1, 7 days |
-| Processed Telegram update IDs | D1, 7 days |
+| User preferences and categories | Retained |
+| Saved links and headline snapshots | Until individually removed; 50/user |
+| Article cache and delivery history | 30 days from first ingestion |
+| Feed validators and refresh times | Retained |
+| AI answers | 7 days |
+| Processed Telegram update IDs | 1 day |
 
-One cron runs every 15 minutes and fetches every source once for all users. Conditional requests reuse ETag/Last-Modified validators. Source failures preserve the last cache. Incoming Telegram requests require the webhook secret. Duplicate webhook updates are ignored after successful processing.
+Incoming Telegram requests require the webhook secret. Private chats only; users cannot operate another user's saved list. `ALLOWED_CHAT_IDS` can restrict the entire bot further. Category and schedule buttons set explicit state, so repeated clicks are safe. Pause/manual settings are preserved during migration; previous automatic intervals become the evening window.
 
-Digests draw from unread articles published within the last 48 hours. This includes recent cached articles when someone first subscribes. Empty digests are not pushed. Unsent older articles expire from this reading window rather than generating a large backlog. Missing/future RSS timestamps fall back to receipt time. Retrying delivery uses per-chat locks and records each successfully sent message separately.
+Per-chat locks prevent overlapping digests; sent article IDs are recorded after each successful message. There is a small duplicate window if Telegram accepts a message and the following database write fails. The bot does not claim exactly-once delivery. Link history is bounded to the cache lifetime; an undated entry reintroduced after eviction may appear again.
 
-There is a small unavoidable duplicate window if Telegram accepts a message and the database write immediately afterward fails. This version does not claim exactly-once delivery. Link history is bounded to the cache lifetime; an undated item reintroduced after eviction may appear again.
+The authenticated internal task endpoints use `INTERNAL_SECRET` if set, otherwise the webhook secret. The deployed Worker has a separate internal secret; new copies can use the fallback. Never expose either secret in logs or source.
 
-This is a small-user MVP: at most **three automatic digests per cron invocation**, with overdue users first. More subscribers may experience delays; increase this bound in `src/index.js` after measuring plan limits. Large feeds can exceed Workers Free CPU limits even when request counts are small. Check Worker logs after deployment; use a paid Worker plan if the free limits are exceeded. No VPS, Docker, Redis, R2 or extra queue is required.
-
-## Checks and local use
+## Verification
 
 ```sh
 npm test
@@ -119,23 +92,18 @@ npm run db:local
 npm run dev
 ```
 
-The local test suite uses real SQLite with D1-shaped methods, a disk restart test and mocked Telegram/OpenRouter calls. `npm run check` also bundles the Worker with Wrangler. `npm run test:worker` runs the compiled Worker in Miniflare with real local D1 and a mocked Telegram endpoint, verifying the authenticated webhook, subscription, digest and replay prevention. No tests call a real Telegram chat or spend OpenRouter credits. Production Worker health and the D1 schema are verified separately. Real Telegram delivery and paid AI require the corresponding account secrets.
+Tests use real SQLite and Miniflare D1 with mocked Telegram/OpenRouter. They cover preferences across restart, digest caps, RSS formats, duplicate links, source failures, JST rollover, refresh reuse, daily budgets, persistent bookmarks, user isolation, webhook authentication and replay prevention. Tests do not send real Telegram messages or spend AI credits.
 
-To run a local scheduled fetch with Wrangler's test server:
+Worker CPU limits are enforced on Cloudflare, not locally. Check invocation CPU and outcomes after changing parser or digest bounds. The setup uses Cloudflare Free's fixed limit; configurable CPU limits require Paid and must not be added here.
 
-```sh
-curl 'http://localhost:8787/__scheduled?cron=*/15%20*%20*%20*%20*'
-```
-
-The production HTTP surface is only `GET /` and the authenticated `POST /telegram` webhook.
-
-Feed mapping: `src/feeds.js`. Bot controls: `src/bot.js`. Delivery: `src/delivery.js`. Cache/migration: `migrations/0001_init.sql`. AI adapter: `src/ai.js`.
+Feed mapping: `src/feeds.js`. Menu: `src/bot.js`. Schedule: `src/schedule.js`. Delivery: `src/delivery.js`. Bookmarks: `src/bookmarks.js`. Migrations: `migrations/`. AI: `src/ai.js`.
 
 ## References
 
-The implementation follows the small Worker + D1 approach of [lxl66566/Telegram-RSS-Bot-on-Cloudflare-Workers](https://github.com/lxl66566/Telegram-RSS-Bot-on-Cloudflare-Workers). This is a new implementation; no upstream source files were copied.
+Inspired by the small Worker + D1 approach of [lxl66566/Telegram-RSS-Bot-on-Cloudflare-Workers](https://github.com/lxl66566/Telegram-RSS-Bot-on-Cloudflare-Workers). This implementation does not copy upstream source files.
 
-- [Cloudflare Cron Triggers](https://developers.cloudflare.com/workers/configuration/cron-triggers/)
-- [D1 Worker API](https://developers.cloudflare.com/d1/worker-api/d1-database/)
+- [Workers Free limits](https://developers.cloudflare.com/workers/platform/limits/)
+- [D1 pricing and Free quota behavior](https://developers.cloudflare.com/d1/platform/pricing/)
+- [Service bindings](https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/)
 - [Telegram Bot API](https://core.telegram.org/bots/api)
 - [OpenRouter chat completions](https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request)

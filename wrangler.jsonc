@@ -3,18 +3,32 @@
   "name": "japanese-rss-bot",
   "main": "src/index.js",
   "compatibility_date": "2026-10-09",
-  "triggers": { "crons": ["*/15 * * * *"] },
-  "observability": { "enabled": true },
-  "d1_databases": [{
-    "binding": "DB",
-    "database_name": "japanese-rss-bot",
-    "database_id": "900f72b3-094d-4193-973d-a13ed280b5ed",
-    "migrations_dir": "migrations"
-  }],
+  "triggers": {
+    "crons": [
+      "0 3,11,22 * * *"
+    ]
+  },
+  "observability": {
+    "enabled": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "japanese-rss-bot",
+      "database_id": "900f72b3-094d-4193-973d-a13ed280b5ed",
+      "migrations_dir": "migrations"
+    }
+  ],
   "vars": {
     "WORKER_URL": "https://japanese-rss-bot.chitoge322.workers.dev",
     "OPENROUTER_MODEL": "",
     "AI_ALLOWED_CHAT_IDS": "",
     "AI_DAILY_LIMIT": "10"
-  }
+  },
+  "services": [
+    {
+      "binding": "SELF",
+      "service": "japanese-rss-bot"
+    }
+  ]
 }

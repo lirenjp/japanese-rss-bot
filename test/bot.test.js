@@ -25,7 +25,7 @@ test('two users retain independent subscriptions, count, cadence and pause acros
     await handleUpdate(env(DB), callback(1, 'cat:tech:1'), n.net, now);
     await handleUpdate(env(DB), callback(1, 'cat:tech:0'), n.net, now);
     await handleUpdate(env(DB), callback(1, 'count:3'), n.net, now);
-    await handleUpdate(env(DB), callback(1, 'freq:1440'), n.net, now);
+    await handleUpdate(env(DB), callback(1, 'slot:morning:1'), n.net, now);
     await handleUpdate(env(DB), callback(1, 'pause:1'), n.net, now);
     await handleUpdate(env(DB), callback(2, 'cat:space:1'), n.net, now);
     DB.sqlite.close();
@@ -33,7 +33,7 @@ test('two users retain independent subscriptions, count, cadence and pause acros
     const a = await DB.prepare('SELECT * FROM users WHERE chat_id=1').first();
     const b = await DB.prepare('SELECT * FROM users WHERE chat_id=2').first();
     assert.deepEqual(JSON.parse(a.categories), ['games']);
-    assert.equal(a.item_limit, 3); assert.equal(a.interval_minutes, 1440); assert.equal(a.paused, 1);
+    assert.equal(a.item_limit, 3); assert.deepEqual(JSON.parse(a.delivery_slots), ['evening', 'morning']); assert.equal(a.paused, 1);
     assert.deepEqual(JSON.parse(b.categories), ['space']); assert.equal(b.item_limit, 5);
   } finally { DB.sqlite.close(); rmSync(dir, { recursive: true }); }
 });
@@ -78,6 +78,10 @@ test('RSS2, RDF and Atom parse Japanese text, relative links, CDATA and future d
   assert.equal(parseFeed('<feed><entry><title>宇宙</title><link rel="self" href="/self"/><link rel="alternate" href="/space"/><summary>星</summary></entry></feed>', feed, now)[0].url, 'https://newsdig.tbs.co.jp/space');
   assert.equal(parseFeed('<rss><channel><item><title>bad</title><link>javascript:alert(1)</link></item></channel></rss>', feed, now).length, 0);
   assert.throws(() => parseFeed('<!DOCTYPE rss [<!ENTITY x "boom">]><rss/>', feed, now));
+  assert.throws(() => parseFeed('<rss><channel><item><title>incomplete</title>', feed, now));
+  const escaped = parseFeed('<feed><entry><title>日本語</title><link rel="alternate" href="https://example.org/?x=1&amp;y=2"/><summary>&lt;p&gt;読みやすい説明&lt;/p&gt;</summary></entry></feed>', feed, now)[0];
+  assert.equal(escaped.summary, '読みやすい説明');
+  assert.equal(escaped.original_url, 'https://example.org/?x=1&y=2');
   assert.equal(normalizedUrl('https://example.org/a?b=2&utm_campaign=x&a=1#part'), 'https://example.org/a?a=1&b=2');
 });
 
@@ -86,8 +90,8 @@ test('feed polling caches validators, deduplicates links and preserves cache on 
   const xml = '<rss><channel><item><title>ニュース</title><link>https://example.org/one?utm_source=test</link><description>概要</description></item></channel></rss>';
   await pollFeeds(e, async () => new Response(xml, { headers: { ETag: 'v1' } }), now);
   assert.equal((await DB.prepare('SELECT * FROM articles').all()).results.length, 1);
-  await pollFeeds(e, async (_url, init) => { assert.equal(init.headers['If-None-Match'], 'v1'); return new Response(null, { status: 304 }); }, now + 900);
-  await pollFeeds(e, async () => new Response('bad', { status: 503 }), now + 1800);
+  await pollFeeds(e, async (_url, init) => { assert.equal(init.headers['If-None-Match'], 'v1'); return new Response(null, { status: 304 }); }, now + 1800);
+  await pollFeeds(e, async () => new Response('bad', { status: 503 }), now + 3600);
   assert.equal((await DB.prepare('SELECT * FROM articles').all()).results.length, 1);
   assert.equal((await DB.prepare('SELECT * FROM feed_state').all()).results.length, FEEDS.length);
 });

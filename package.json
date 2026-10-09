@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "wrangler dev --test-scheduled",
     "test": "node --test test/*.test.js",
@@ -14,6 +16,11 @@
     "db:remote": "wrangler d1 migrations apply japanese-rss-bot --remote",
     "telegram:setup": "node --env-file-if-exists=.dev.vars scripts/setup-telegram.js"
   },
-  "dependencies": { "fast-xml-parser": "5.11.2", "he": "1.2.0" },
-  "devDependencies": { "wrangler": "4.149.0", "miniflare": "5.20261006.1-alpha" }
+  "dependencies": {
+    "he": "1.2.0"
+  },
+  "devDependencies": {
+    "miniflare": "5.20261006.1-alpha",
+    "wrangler": "4.149.0"
+  }
 }

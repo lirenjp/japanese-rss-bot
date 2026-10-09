@@ -1,12 +1,12 @@
 import { DatabaseSync } from 'node:sqlite';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 // D1-shaped adapter backed by actual SQLite. This tests the real migration and SQL.
 export function database(path = ':memory:') {
   const sqlite = new DatabaseSync(path);
   sqlite.exec('PRAGMA foreign_keys=ON');
   if (!sqlite.prepare("SELECT name FROM sqlite_master WHERE name='users'").get()) {
-    sqlite.exec(readFileSync(new URL('../migrations/0001_init.sql', import.meta.url), 'utf8'));
+    for (const name of readdirSync(new URL('../migrations/', import.meta.url)).sort()) sqlite.exec(readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8'));
   }
   function prepare(sql, args = []) {
     return {
@@ -16,13 +16,18 @@ export function database(path = ':memory:') {
       async run() { return { meta: sqlite.prepare(sql).run(...args) }; },
     };
   }
-  return { prepare, sqlite, async batch(statements) {
-    sqlite.exec('BEGIN');
-    try { const result = []; for (const stmt of statements) result.push(await stmt.run()); sqlite.exec('COMMIT'); return result; }
-    catch (error) { sqlite.exec('ROLLBACK'); throw error; }
+  let pending = Promise.resolve();
+  return { prepare, sqlite, batch(statements) {
+    const task = async () => {
+      sqlite.exec('BEGIN');
+      try { const result = []; for (const stmt of statements) result.push(await stmt.run()); sqlite.exec('COMMIT'); return result; }
+      catch (error) { sqlite.exec('ROLLBACK'); throw error; }
+    };
+    const result = pending.then(task);
+    pending = result.catch(() => {});
+    return result;
   } };
 }
-
 export function env(DB) {
   return { DB, TELEGRAM_BOT_TOKEN: 'test-token', TELEGRAM_WEBHOOK_SECRET: 'test-secret' };
 }

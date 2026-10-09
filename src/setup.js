@@ -4,8 +4,10 @@ import { acquire, release, nowSeconds, DAY } from './db.js';
 const commands = [
   { command: 'start', description: 'Choose your categories' },
   { command: 'news', description: 'Read the next digest' },
+  { command: 'refresh', description: 'Refresh subscribed sources and read' },
+  { command: 'saved', description: 'Open Read later' },
   { command: 'categories', description: 'Subscribe or unsubscribe' },
-  { command: 'settings', description: 'Article count, frequency and AI language' },
+  { command: 'settings', description: 'Article count, delivery windows and AI language' },
   { command: 'pause', description: 'Pause automatic delivery' },
   { command: 'resume', description: 'Resume automatic delivery' },
 ];
@@ -32,7 +34,7 @@ export async function configureTelegram(env, net = fetch, replace = false) {
 // Configure on the next cron after secrets are added. Recheck daily and after rotation.
 export async function ensureTelegram(env, net = fetch, now = nowSeconds()) {
   if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_WEBHOOK_SECRET || !env.WORKER_URL) return false;
-  const input = JSON.stringify([env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_WEBHOOK_SECRET, env.WORKER_URL]);
+  const input = JSON.stringify([env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_WEBHOOK_SECRET, env.WORKER_URL, commands]);
   const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
   const fingerprint = Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, '0')).join('');
   const key = `telegram-setup:${fingerprint}`;
