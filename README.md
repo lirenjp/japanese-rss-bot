@@ -26,6 +26,12 @@ Every 24 hours means 24 hours from when that option was selected, not a fixed lo
 Requires Node.js 22+, a Cloudflare account and a **dedicated Telegram bot** from [BotFather](https://t.me/BotFather).
 Keep an existing archive bot on its own webhook.
 
+This repository is configured for the deployed Worker at `https://japanese-rss-bot.chitoge322.workers.dev` and its D1 database.
+To finish that deployment, add `TELEGRAM_BOT_TOKEN` as a **Secret** in the Worker's Settings → Variables and Secrets.
+The webhook secret is already configured. The next cron, within roughly 15 minutes, registers the webhook and commands automatically, then fills the feed cache.
+Automatic setup checks the webhook daily and after secret rotation, and refuses to replace a different existing webhook.
+The following CLI steps apply when deploying your own copy; set your own database ID and `WORKER_URL`.
+
 1. Unzip this folder, then run:
 
    ```sh
@@ -34,7 +40,7 @@ Keep an existing archive bot on its own webhook.
    npx wrangler d1 create japanese-rss-bot
    ```
 
-2. Copy the returned D1 database ID into `wrangler.jsonc` instead of the zero placeholder.
+2. Copy the returned D1 database ID into `wrangler.jsonc` and set `WORKER_URL` to your Worker's HTTPS URL.
 
 3. Apply the migration and configure the two required secrets:
 
@@ -113,7 +119,7 @@ npm run db:local
 npm run dev
 ```
 
-The local test suite uses real SQLite with D1-shaped methods, a disk restart test and mocked Telegram/OpenRouter calls. `npm run check` also bundles the Worker with Wrangler. `npm run test:worker` runs the compiled Worker in Miniflare with real local D1 and a mocked Telegram endpoint, verifying the authenticated webhook, subscription, digest and replay prevention. All these checks passed during development. No tests call a real Telegram chat or spend OpenRouter credits. Production deployment, real Telegram delivery and paid AI have not been exercised.
+The local test suite uses real SQLite with D1-shaped methods, a disk restart test and mocked Telegram/OpenRouter calls. `npm run check` also bundles the Worker with Wrangler. `npm run test:worker` runs the compiled Worker in Miniflare with real local D1 and a mocked Telegram endpoint, verifying the authenticated webhook, subscription, digest and replay prevention. No tests call a real Telegram chat or spend OpenRouter credits. Production Worker health and the D1 schema are verified separately. Real Telegram delivery and paid AI require the corresponding account secrets.
 
 To run a local scheduled fetch with Wrangler's test server:
 

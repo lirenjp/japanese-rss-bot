@@ -8,10 +8,11 @@
   "d1_databases": [{
     "binding": "DB",
     "database_name": "japanese-rss-bot",
-    "database_id": "00000000-0000-0000-0000-000000000000",
+    "database_id": "900f72b3-094d-4193-973d-a13ed280b5ed",
     "migrations_dir": "migrations"
   }],
   "vars": {
+    "WORKER_URL": "https://japanese-rss-bot.chitoge322.workers.dev",
     "OPENROUTER_MODEL": "",
     "AI_ALLOWED_CHAT_IDS": "",
     "AI_DAILY_LIMIT": "10"

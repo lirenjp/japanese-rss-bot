@@ -3,6 +3,7 @@ import { boundedText } from './text.js';
 import { handleUpdate } from './bot.js';
 import { pollFeeds } from './rss.js';
 import { deliver } from './delivery.js';
+import { ensureTelegram } from './setup.js';
 
 export async function tick(env, net = fetch, now = nowSeconds()) {
   const lock = await acquire(env.DB, 'cron', 600, now);
@@ -50,6 +51,11 @@ export default {
   },
   async scheduled(_event, env) {
     if (!env.TELEGRAM_BOT_TOKEN) return;
+    try { await ensureTelegram(env); }
+    catch (error) {
+      console.error('Telegram setup failed', error.name);
+      return;
+    }
     await tick(env);
   },
 };
